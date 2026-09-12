@@ -1,0 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme CSS variables — overridden per vendor store ── */
+:root {
+  --color-brand-50: #f0fdf4;
+  --color-brand-500: #16a34a;
+  --color-brand-600: #15803d;
+  --color-brand-700: #166534;
+  --store-bg: #ffffff;
+  --store-surface: #f9fafb;
+  --store-text: #111827;
+}
+
+/* QuickCart theme (Blinkit-style dark) */
+[data-theme="QUICKCART"] {
+  --color-brand-50: #f0fdf4;
+  --color-brand-500: #16a34a;
+  --color-brand-600: #15803d;
+  --color-brand-700: #166534;
+  --store-bg: #111827;
+  --store-surface: #1f2937;
+  --store-text: #ffffff;
+}
+
+/* FreshMart theme */
+[data-theme="FRESHMART"] {
+  --color-brand-50: #fff7ed;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea6c0a;
+  --color-brand-700: #c2570a;
+  --store-bg: #fff8f0;
+  --store-surface: #ffffff;
+  --store-text: #1a1a1a;
+}
+
+/* StyleHub theme */
+[data-theme="STYLEHUB"] {
+  --color-brand-50: #f5f3ff;
+  --color-brand-500: #7c3aed;
+  --color-brand-600: #6d28d9;
+  --color-brand-700: #5b21b6;
+  --store-bg: #fafafa;
+  --store-surface: #ffffff;
+  --store-text: #1a1a1a;
+}
+
+/* LocalPro theme */
+[data-theme="LOCALPRO"] {
+  --color-brand-50: #eff6ff;
+  --color-brand-500: #1d4ed8;
+  --color-brand-600: #1e40af;
+  --color-brand-700: #1e3a8a;
+  --store-bg: #f8fafc;
+  --store-surface: #ffffff;
+  --store-text: #0f172a;
+}
+
+/* ── Base reset & typography ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #f8fafc;
+  color: #111827;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+/* Remove blue outline on click but keep for keyboard nav */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Vendor admin portal ── */
+.vendor-portal {
+  @apply bg-gray-50 min-h-screen;
+}
+
+/* ── Customer store ── */
+.customer-store {
+  background-color: var(--store-bg);
+  color: var(--store-text);
+  min-height: 100vh;
+}
+
+/* ── Utility: hide scrollbar but keep scrollable ── */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Smooth transitions globally ── */
+button, a, input, select, textarea {
+  transition: all 0.15s ease;
+}
+
+/* ── Status chip base ── */
+.status-chip {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
