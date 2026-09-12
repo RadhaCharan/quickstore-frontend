@@ -25,6 +25,14 @@ api.interceptors.response.use(
   },
 );
 
+// Uploads an image (product photo, category icon, store logo/banner) and returns its public URL.
+export async function uploadImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post('/uploads', formData);
+  return data.url;
+}
+
 // Tenant-scoped API (attaches X-Tenant-Slug header)
 export const tenantApi = (slug: string) => {
   const instance = axios.create({

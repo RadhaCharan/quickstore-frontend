@@ -21,9 +21,14 @@ export default function CustomerLogin() {
     if (!phone) return;
     setLoading(true);
     try {
-      await tenantApi(slug!).post('/auth/customer/send-otp', { phone });
+      const { data } = await tenantApi(slug!).post('/auth/customer/send-otp', { phone });
       setOtpSent(true);
-      toast.success('OTP sent!');
+      if (import.meta.env.DEV && data?.otp) {
+        setOtp(data.otp);
+        toast.success(`OTP sent! (dev: ${data.otp})`);
+      } else {
+        toast.success('OTP sent!');
+      }
     } catch {
       toast.error('Failed to send OTP');
     } finally {

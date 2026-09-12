@@ -3,13 +3,14 @@ import { useAuthStore } from '../../store/authStore';
 import { useVendorStore } from '../../store/vendorStore';
 import {
   LayoutDashboard, Package, ShoppingBag, Truck,
-  Tag, Users, Settings, LogOut, Zap, BarChart2, Puzzle,
+  Tag, Users, Settings, LogOut, Zap, BarChart2, Puzzle, FolderTree,
 } from 'lucide-react';
 
 // All possible nav items — each tied to a feature flag (null = always visible)
 const ALL_NAV = [
   { to: '/vendor/dashboard',  icon: LayoutDashboard, label: 'Dashboard',     feature: null },
   { to: '/vendor/products',   icon: Package,          label: 'Products',      feature: 'PRODUCTS' },
+  { to: '/vendor/categories', icon: FolderTree,       label: 'Categories',    feature: 'CATEGORIES' },
   { to: '/vendor/orders',     icon: ShoppingBag,      label: 'Orders',        feature: 'ORDERS' },
   { to: '/vendor/delivery',   icon: Truck,            label: 'Delivery',      feature: 'DELIVERY_TRACKING' },
   { to: '/vendor/discounts',  icon: Tag,              label: 'Discounts',     feature: 'DISCOUNTS' },

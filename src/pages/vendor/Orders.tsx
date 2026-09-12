@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
-import { ShoppingBag, X, Phone, MapPin, Package } from 'lucide-react';
+import { ShoppingBag, X, Phone, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { format } from 'date-fns';
+import { safeFormat } from '../../shared/utils/date';
 
 const STATUS_META: Record<string, { bg: string; color: string; label: string }> = {
   ALL:              { bg: '#f3f4f6', color: '#374151',  label: 'All' },
@@ -30,7 +31,7 @@ function Panel({ order, onClose, onUpdate }: any) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #f1f5f9' }}>
           <div>
             <div style={{ fontWeight: 700, color: '#111827', fontSize: 15 }}>#{order.orderNumber}</div>
-            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{order.createdAt ? format(new Date(order.createdAt), 'dd MMM yyyy, HH:mm') : ''}</div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{safeFormat(order.createdAt, 'dd MMM yyyy, HH:mm')}</div>
           </div>
           <button onClick={onClose} style={{ background: '#f9fafb', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}><X size={16} /></button>
         </div>
@@ -45,8 +46,23 @@ function Panel({ order, onClose, onUpdate }: any) {
           {/* Customer */}
           <div style={{ background: '#f9fafb', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Customer</div>
-            {order.customerPhone && <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151', marginBottom: 4 }}><Phone size={13} color="#9ca3af" />{order.customerPhone}</div>}
+            {order.customerName && <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 4 }}>{order.customerName}</div>}
+            {order.customerPhone && <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151' }}><Phone size={13} color="#9ca3af" />{order.customerPhone}</div>}
           </div>
+
+          {/* Delivery address */}
+          {order.address && (
+            <div style={{ background: '#f9fafb', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <MapPin size={12} /> Delivery Address
+              </div>
+              <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.5 }}>
+                {order.address.line1}{order.address.line2 ? `, ${order.address.line2}` : ''}
+                {order.address.city ? `, ${order.address.city}` : ''}
+                {order.address.pincode ? ` – ${order.address.pincode}` : ''}
+              </div>
+            </div>
+          )}
 
           {/* Items */}
           {order.items?.length > 0 && (
@@ -86,17 +102,47 @@ function Panel({ order, onClose, onUpdate }: any) {
 
 export default function VendorOrders() {
   const [filter, setFilter] = useState('ALL');
-  const [selected, setSelected] = useState<any>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('orderId'));
   const qc = useQueryClient();
+
+  // Deep-link support — the Dashboard's recent-orders rows / stat cards link here as
+  // `?orderId=...` to open a specific order straight away instead of just the bare list.
+  useEffect(() => {
+    const id = searchParams.get('orderId');
+    if (id && id !== selectedId) setSelectedId(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  function closePanel() {
+    setSelectedId(null);
+    if (searchParams.get('orderId')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('orderId');
+      setSearchParams(next, { replace: true });
+    }
+  }
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['orders', filter],
-    queryFn: () => api.get('/orders', { params: filter !== 'ALL' ? { status: filter } : {} }).then(r => { const d = r.data; return Array.isArray(d) ? d : Array.isArray(d?.items) ? d.items : []; }),
+    queryFn: () => api.get('/orders', { params: filter !== 'ALL' ? { status: filter } : {} }).then(r => {
+      const d = r.data;
+      // /orders returns { data: [...], total, page, limit, totalPages } — not { items }.
+      return Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : Array.isArray(d?.items) ? d.items : [];
+    }),
+  });
+
+  // The list only carries summary fields — fetch the full order (with line items) once a
+  // row is opened, rather than bloating every page of the list with every order's items.
+  const { data: orderDetail } = useQuery({
+    queryKey: ['order', selectedId],
+    queryFn: () => api.get(`/orders/${selectedId}`).then(r => r.data),
+    enabled: !!selectedId,
   });
 
   const upd = useMutation({
     mutationFn: ({ id, status }: any) => api.patch(`/orders/${id}/status`, { status }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); setSelected(null); toast.success('Updated'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); closePanel(); toast.success('Updated'); },
   });
 
   return (
@@ -138,13 +184,13 @@ export default function VendorOrders() {
             </thead>
             <tbody>
               {orders.map((o: any) => (
-                <tr key={o.id} style={{ borderBottom: '1px solid #f9fafb', cursor: 'pointer' }} onClick={() => setSelected(o)}>
+                <tr key={o.id} style={{ borderBottom: '1px solid #f9fafb', cursor: 'pointer' }} onClick={() => setSelectedId(o.id)}>
                   <td style={{ padding: '13px 16px', fontWeight: 700, color: '#111827' }}>#{o.orderNumber}</td>
-                  <td style={{ padding: '13px 16px', color: '#374151' }}>{o.customerPhone || '—'}</td>
+                  <td style={{ padding: '13px 16px', color: '#374151' }}>{o.customerName || o.customerPhone || '—'}</td>
                   <td style={{ padding: '13px 16px', fontWeight: 700, color: '#16a34a' }}>₹{o.total}</td>
                   <td style={{ padding: '13px 16px' }}><Chip status={o.paymentStatus === 'PAID' ? 'DELIVERED' : 'PLACED'} /></td>
                   <td style={{ padding: '13px 16px' }}><Chip status={o.status} /></td>
-                  <td style={{ padding: '13px 16px', color: '#9ca3af', fontSize: 12 }}>{o.createdAt ? format(new Date(o.createdAt), 'dd MMM, HH:mm') : ''}</td>
+                  <td style={{ padding: '13px 16px', color: '#9ca3af', fontSize: 12 }}>{safeFormat(o.createdAt, 'dd MMM, HH:mm')}</td>
                   <td style={{ padding: '13px 16px', color: '#9ca3af', fontSize: 11 }}>→</td>
                 </tr>
               ))}
@@ -153,7 +199,7 @@ export default function VendorOrders() {
         </div>
       )}
 
-      <Panel order={selected} onClose={() => setSelected(null)} onUpdate={(s: string) => upd.mutate({ id: selected.id, status: s })} />
+      <Panel order={selectedId ? orderDetail : null} onClose={closePanel} onUpdate={(s: string) => upd.mutate({ id: selectedId, status: s })} />
     </div>
   );
 }

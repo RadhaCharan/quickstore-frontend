@@ -15,6 +15,7 @@ interface AccountContextValue {
   logout: () => void;
   updateName: (name: string) => Promise<void>;
   loadOrders: () => Promise<void>;
+  loadAddresses: () => Promise<void>;
   addAddress: (input: AddressInput) => Promise<void>;
   updateAddress: (id: string, input: AddressInput) => Promise<void>;
   removeAddress: (id: string) => Promise<void>;
@@ -65,6 +66,14 @@ export function AccountProvider({ slug, children }: { slug: string; children: Re
     setOrders(r); setOrdersLoaded(true);
   }, [token]);
 
+  // Re-fetches saved addresses from the server — used when opening the Addresses tab so it
+  // reflects addresses the checkout flow may have just saved server-side, not a stale cache.
+  const loadAddresses = useCallback(async () => {
+    if (!token) return;
+    const list = await api.account.addresses(token);
+    setAddresses(list);
+  }, [token]);
+
   const addAddress = useCallback(async (input: AddressInput) => {
     if (!token) return;
     const c = await api.account.addAddress(token, input);
@@ -87,8 +96,8 @@ export function AccountProvider({ slug, children }: { slug: string; children: Re
     customer, token, addresses, orders, ordersLoaded,
     requestOtp: api.account.requestOtp,
     verifyOtp, logout: () => persistToken(null),
-    updateName, loadOrders, addAddress, updateAddress, removeAddress,
-  }), [customer, token, addresses, orders, ordersLoaded, verifyOtp, persistToken, updateName, loadOrders, addAddress, updateAddress, removeAddress]);
+    updateName, loadOrders, loadAddresses, addAddress, updateAddress, removeAddress,
+  }), [customer, token, addresses, orders, ordersLoaded, verifyOtp, persistToken, updateName, loadOrders, loadAddresses, addAddress, updateAddress, removeAddress]);
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

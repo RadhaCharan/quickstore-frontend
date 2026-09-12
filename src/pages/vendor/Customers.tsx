@@ -1,12 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { Users } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormat } from '../../shared/utils/date';
 
 export default function VendorCustomers() {
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['customers'],
-    queryFn: () => api.get('/customers').then((r) => { const d = r.data; return Array.isArray(d) ? d : Array.isArray(d?.items) ? d.items : []; }),
+    queryFn: () => api.get('/customers').then((r) => {
+      const d = r.data;
+      // /customers returns { data: [...], total, page, limit } — not { items }.
+      return Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : Array.isArray(d?.items) ? d.items : [];
+    }),
   });
 
   return (
@@ -39,7 +43,7 @@ export default function VendorCustomers() {
                   <td className="px-4 py-3 font-medium">{c.name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{c.phone}</td>
                   <td className="px-4 py-3 text-gray-600">{c.email || '—'}</td>
-                  <td className="px-4 py-3 text-gray-500">{format(new Date(c.createdAt), 'dd MMM yyyy')}</td>
+                  <td className="px-4 py-3 text-gray-500">{safeFormat(c.createdAt, 'dd MMM yyyy')}</td>
                   <td className="px-4 py-3">{c.orderCount ?? '—'}</td>
                 </tr>
               ))}
