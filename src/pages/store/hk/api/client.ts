@@ -85,11 +85,12 @@ export const api = {
     };
   },
 
-  products: async (params: { categoryId?: string; q?: string } = {}): Promise<{ items: ProductSummary[]; total: number }> => {
+  products: async (params: { categoryId?: string; q?: string; page?: number } = {}): Promise<{ items: ProductSummary[]; total: number }> => {
     const sp = new URLSearchParams();
     if (params.categoryId) sp.set('categoryId', params.categoryId);
     if (params.q) sp.set('search', params.q);
     sp.set('limit', '40');
+    sp.set('page', String(params.page ?? 1));
     const d = await qs<any>(`/storefront/${_slug}/products?${sp.toString()}`);
     const items = Array.isArray(d) ? d : (d.items || []);
     return { items: items.map(mapProduct), total: d.total || items.length };
@@ -119,14 +120,40 @@ export const api = {
         city: payload.address.city,
         pincode: payload.address.pincode,
       },
+      couponCode: payload.couponCode || undefined,
       notes: payload.notes,
+      customerName: payload.name || undefined,
     };
     const res = await qs<any>('/orders', { method: 'POST', body: JSON.stringify(body) });
     return {
       orderId: res.id,
       code: res.orderNumber || res.id,
       totalPaise: toP(res.total),
+      discountPaise: toP(res.discountAmt),
       payment: { provider: 'cod' as const },
+    };
+  },
+
+  // Validates a coupon code against the current subtotal without placing an order. Returns
+  // the coupon's type/value/caps too, so the checkout page can recompute the discount live
+  // as the cart changes instead of re-hitting the network on every qty +/-.
+  applyCoupon: async (code: string, orderAmountPaise: number): Promise<{
+    code: string; type: 'PERCENTAGE' | 'FLAT'; value: number;
+    minOrderAmtPaise: number; maxDiscountPaise: number | null;
+    discountPaise: number; finalPaise: number;
+  }> => {
+    const d = await qs<any>('/discounts/apply', {
+      method: 'POST',
+      body: JSON.stringify({ code, orderAmount: orderAmountPaise / 100 }),
+    });
+    return {
+      code: d.code,
+      type: d.type,
+      value: Number(d.value),
+      minOrderAmtPaise: toP(d.minOrderAmt),
+      maxDiscountPaise: d.maxDiscount != null ? toP(d.maxDiscount) : null,
+      discountPaise: toP(d.discountAmt),
+      finalPaise: toP(d.finalAmount),
     };
   },
 
@@ -162,8 +189,8 @@ export const api = {
 
   account: {
     requestOtp: async (phone: string) => {
-      await qs('/auth/customer/send-otp', { method: 'POST', body: JSON.stringify({ phone }) });
-      return { sent: true as const };
+      const d = await qs<any>('/auth/customer/send-otp', { method: 'POST', body: JSON.stringify({ phone }) });
+      return { sent: true as const, devCode: import.meta.env.DEV ? d?.otp : undefined };
     },
 
     verifyOtp: async (phone: string, code: string) => {
@@ -172,21 +199,30 @@ export const api = {
     },
 
     me: async (token: string) => {
-      const d = await qs<any>('/customers/me/profile', { token });
+      // `/customers/me/profile` doesn't include addresses — fetch both together so the
+      // account panel actually has real saved addresses instead of an empty placeholder.
+      const [d, addresses] = await Promise.all([
+        qs<any>('/customers/me/profile', { token }),
+        api.account.addresses(token).catch(() => [] as CustomerAddress[]),
+      ]);
       return {
         customer: { id: d.id || d.phone, phone: d.phone, name: d.name || null } as CustomerSession,
-        addresses: [] as CustomerAddress[],
+        addresses,
       };
     },
 
-    updateMe: async (token: string, name: string) => {
-      await qs('/customers/me/profile', { method: 'PATCH', body: JSON.stringify({ name }), token });
-      return { id: '', phone: '', name } as CustomerSession;
+    updateMe: async (token: string, name: string): Promise<CustomerSession> => {
+      // Return what the server actually saved (id/phone included) — not a stub that would
+      // wipe out the phone number the rest of the account panel displays.
+      const d = await qs<any>('/customers/me/profile', { method: 'PATCH', body: JSON.stringify({ name }), token });
+      return { id: d.id || d.phone, phone: d.phone, name: d.name || null };
     },
 
     orders: async (token: string): Promise<CustomerOrderSummary[]> => {
-      const d = await qs<any>('/orders', { token });
-      const items = Array.isArray(d) ? d : (d.items || []);
+      // Customer-scoped endpoint — the vendor-wide GET /orders would leak every customer's
+      // order history to whoever happens to be signed in.
+      const d = await qs<any>('/orders/mine', { token });
+      const items = Array.isArray(d) ? d : (d.data || d.items || []);
       return items.map((o: any) => ({ id: o.id, orderNumber: o.orderNumber, status: o.status, total: o.total, createdAt: o.createdAt }));
     },
 
@@ -194,18 +230,18 @@ export const api = {
       const d = await qs<any>('/customers/me/addresses', { token });
       return (Array.isArray(d) ? d : []).map((a: any) => ({
         id: a.id, label: a.label || 'Home', line1: a.line1, line2: a.line2 || null,
-        city: a.city, pincode: a.pincode, isDefault: a.isDefault || false,
+        city: a.city, pincode: a.pincode, isDefault: a.isDefault ?? a.is_default ?? false,
       }));
     },
 
     addAddress: async (token: string, input: any): Promise<CustomerAddress> => {
       const d = await qs<any>('/customers/me/addresses', { method: 'POST', body: JSON.stringify(input), token });
-      return { id: d.id, label: d.label || 'Home', line1: d.line1, line2: d.line2 || null, city: d.city, pincode: d.pincode, isDefault: d.isDefault || false };
+      return { id: d.id, label: d.label || 'Home', line1: d.line1, line2: d.line2 || null, city: d.city, pincode: d.pincode, isDefault: d.isDefault ?? d.is_default ?? false };
     },
 
     updateAddress: async (token: string, id: string, input: any): Promise<CustomerAddress> => {
       const d = await qs<any>(`/customers/me/addresses/${id}`, { method: 'PATCH', body: JSON.stringify(input), token });
-      return { id: d.id, label: d.label || 'Home', line1: d.line1, line2: d.line2 || null, city: d.city, pincode: d.pincode, isDefault: d.isDefault || false };
+      return { id: d.id, label: d.label || 'Home', line1: d.line1, line2: d.line2 || null, city: d.city, pincode: d.pincode, isDefault: d.isDefault ?? d.is_default ?? false };
     },
 
     deleteAddress: async (token: string, id: string) => {

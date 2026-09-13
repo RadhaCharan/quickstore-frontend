@@ -7,6 +7,7 @@ import VendorSignup     from './pages/onboarding/VendorSignup';
 import VendorOnboarding from './pages/vendor/Onboarding';
 import VendorDashboard  from './pages/vendor/Dashboard';
 import VendorProducts   from './pages/vendor/Products';
+import VendorCategories from './pages/vendor/Categories';
 import VendorOrders     from './pages/vendor/Orders';
 import VendorDelivery   from './pages/vendor/Delivery';
 import VendorDiscounts  from './pages/vendor/Discounts';
@@ -56,7 +57,8 @@ export default function App() {
           <Route path="dashboard" element={<VendorDashboard />} />
           <Route path="features"  element={<VendorFeatures />} />
           <Route path="settings"  element={<VendorSettings />} />
-          <Route path="products"  element={<FeatureGuard feature="PRODUCTS"><VendorProducts /></FeatureGuard>} />
+          <Route path="products"   element={<FeatureGuard feature="PRODUCTS"><VendorProducts /></FeatureGuard>} />
+          <Route path="categories" element={<FeatureGuard feature="CATEGORIES"><VendorCategories /></FeatureGuard>} />
           <Route path="orders"    element={<FeatureGuard feature="ORDERS"><VendorOrders /></FeatureGuard>} />
           <Route path="delivery"  element={<FeatureGuard feature="DELIVERY_TRACKING"><VendorDelivery /></FeatureGuard>} />
           <Route path="discounts" element={<FeatureGuard feature="DISCOUNTS"><VendorDiscounts /></FeatureGuard>} />

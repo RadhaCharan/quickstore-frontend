@@ -250,6 +250,31 @@ button {
   opacity: 0.7;
 }
 
+.chip--category {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chip__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--vs-surface-raised);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.chip__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* ---------- Product grid ---------- */
 
 .section-heading {
@@ -258,6 +283,11 @@ button {
   padding: 0 var(--vs-space) 10px;
   max-width: var(--vs-max-width);
   margin: 0 auto;
+}
+
+.section-heading__count {
+  color: var(--vs-text-muted);
+  font-weight: 500;
 }
 
 .grid {
@@ -296,6 +326,7 @@ button {
 }
 
 .card__media {
+  position: relative;
   aspect-ratio: 1;
   border-radius: calc(var(--vs-radius-card) - 6px);
   background: var(--vs-surface-raised);
@@ -309,6 +340,26 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.card[data-soldout] .card__media img {
+  opacity: 0.4;
+  filter: grayscale(60%);
+}
+
+.card__soldout-tag {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--vs-danger);
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .card__name {
@@ -363,6 +414,10 @@ button {
   position: absolute;
   top: 12px;
   left: 12px;
+  /* .card__media is also `position: relative` (needed for the sold-out overlay) — without
+     an explicit stacking order, two positioned siblings paint in DOM order, so .card__media
+     (later in the markup) was covering this badge instead of sitting behind it. */
+  z-index: 2;
   background: var(--vs-accent);
   color: var(--vs-accent-text);
   font-size: 10px;
@@ -382,9 +437,10 @@ button {
 }
 
 .add:disabled {
-  border-color: var(--vs-border);
-  color: var(--vs-text-muted);
+  border-color: var(--vs-danger);
+  color: var(--vs-danger);
   cursor: not-allowed;
+  opacity: 0.85;
 }
 
 .stepper {
@@ -780,6 +836,59 @@ button {
   color: var(--vs-danger);
 }
 
+/* ---------- Order success (fresh from checkout) ---------- */
+
+.order-success {
+  text-align: center;
+  padding: 28px 16px 22px;
+  margin-bottom: 8px;
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius-card);
+  background: var(--vs-surface);
+}
+
+.order-success__check {
+  display: inline-block;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+}
+
+.order-success__circle {
+  stroke: var(--vs-success);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  animation: order-success-circle 0.5s ease-out forwards;
+}
+
+.order-success__tick {
+  stroke: var(--vs-success);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 34;
+  stroke-dashoffset: 34;
+  animation: order-success-tick 0.35s 0.45s ease-out forwards;
+}
+
+.order-success__title {
+  margin: 4px 0 2px;
+}
+
+@keyframes order-success-circle {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes order-success-tick {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-success__circle, .order-success__tick { animation: none; stroke-dashoffset: 0; }
+}
+
 /* ---------- Order tracking ---------- */
 
 .timeline {
@@ -908,6 +1017,7 @@ button {
 }
 
 .sheet {
+  position: relative; /* containing block for an absolutely-positioned close button (ProductDetail) */
   width: 100%;
   max-height: 88vh;
   overflow-y: auto;
@@ -1293,6 +1403,24 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* .pd renders the sold-out tag as a sibling right after <Carousel>, not inside its own
+   media box (unlike the grid card) — so it needs its own sizing instead of the `inset: 0`
+   the shared .card__soldout-tag rule uses, which would otherwise cover the whole page. */
+.pd__soldout-tag {
+  position: absolute;
+  inset: auto;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 1;
+  font-size: 14px;
+}
+
+.pd[data-soldout] .carousel img {
+  opacity: 0.4;
+  filter: grayscale(60%);
 }
 
 .carousel__arrow {

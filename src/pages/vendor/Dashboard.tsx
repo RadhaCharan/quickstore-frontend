@@ -1,18 +1,53 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { ShoppingBag, TrendingUp, Package, Users, Copy, ExternalLink, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { safeFormat } from '../../shared/utils/date';
+import { TrendChart, BarList } from '../../components/vendor/Charts';
 
+// Validated with the dataviz skill's palette checker (adjacent-pair mode, as appropriate for
+// a fixed-order chip row / bar list): the previous CONFIRMED/PREPARING amber+orange pair was
+// ΔE 0.1 apart for deuteranopia — effectively the same color to a colorblind viewer. This
+// ordering clears the CVD and normal-vision floors; every status is always shown with its
+// text label too; run `validate_palette.js` again before changing any of these six.
 const STATUS_COLOR: Record<string, string> = {
-  PLACED: '#3b82f6', CONFIRMED: '#f59e0b', PREPARING: '#f97316',
-  OUT_FOR_DELIVERY: '#8b5cf6', DELIVERED: '#16a34a', CANCELLED: '#ef4444',
+  PLACED: '#2a78d6', CONFIRMED: '#eb6834', PREPARING: '#4a3aa7',
+  OUT_FOR_DELIVERY: '#eda100', DELIVERED: '#008300', CANCELLED: '#e34948',
 };
 
-function StatCard({ icon: Icon, label, value, color }: any) {
+const STATUS_LABEL: Record<string, string> = {
+  PLACED: 'Placed', CONFIRMED: 'Confirmed', PREPARING: 'Preparing',
+  OUT_FOR_DELIVERY: 'Out for delivery', DELIVERED: 'Delivered', CANCELLED: 'Cancelled',
+};
+
+const RANGE_OPTIONS = [
+  { label: '7 days', days: 7 },
+  { label: '30 days', days: 30 },
+  { label: '90 days', days: 90 },
+];
+
+function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', padding: '20px 22px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      <div style={{ marginBottom: 12 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: 0 }}>{title}</h3>
+        {subtitle && <p style={{ fontSize: 11, color: '#9ca3af', margin: '2px 0 0' }}>{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, color, onClick }: any) {
+  return (
+    <div
+      onClick={onClick}
+      style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', padding: '20px 22px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', gap: 16, alignItems: 'flex-start', cursor: onClick ? 'pointer' : undefined }}
+    >
       <div style={{ width: 44, height: 44, borderRadius: 12, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={20} color={color} />
       </div>
@@ -26,6 +61,7 @@ function StatCard({ icon: Icon, label, value, color }: any) {
 
 export default function VendorDashboard() {
   const { tenantSlug } = useAuthStore();
+  const navigate = useNavigate();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -45,13 +81,31 @@ export default function VendorDashboard() {
     retry: 1,
   });
 
+  const [rangeDays, setRangeDays] = useState(30);
+  const { data: timeseries = [] } = useQuery({
+    queryKey: ['analytics-timeseries', rangeDays],
+    queryFn: () => api.get('/orders/analytics/timeseries', { params: { days: rangeDays } }).then(r => r.data),
+  });
+  const rangeRevenue = timeseries.reduce((s: number, d: any) => s + d.revenue, 0);
+  const rangeOrders = timeseries.reduce((s: number, d: any) => s + d.orders, 0);
+
+  // Rendered in this fixed order (not sorted by count) — it's the order the palette above
+  // was validated against; re-sorting by count would put arbitrary colors next to each
+  // other and could reintroduce the confusable pair the ordering was chosen to avoid.
+  const STATUS_ORDER = ['PLACED', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'];
+  const countByStatus = new Map((analytics?.statusBreakdown ?? []).map((s: any) => [s.status, s.count]));
+  const statusItems = STATUS_ORDER
+    .filter(status => countByStatus.has(status))
+    .map(status => ({ label: STATUS_LABEL[status], value: countByStatus.get(status) as number, color: STATUS_COLOR[status] }));
+
+  // /products already only ever returns is_active products, so its `total` IS the active
+  // count — ask for a single row (limit=1) instead of pulling every product just to count
+  // them client-side, which silently undercounted anyway once the list was paginated.
   const { data: productsData } = useQuery({
     queryKey: ['products-count'],
-    queryFn: () => api.get('/products').then(r => r.data),
+    queryFn: () => api.get('/products', { params: { limit: 1 } }).then(r => r.data),
   });
-  const activeProducts = Array.isArray(productsData)
-    ? productsData.filter((p: any) => p.isActive).length
-    : (productsData?.items?.filter((p: any) => p.isActive).length ?? 0);
+  const activeProducts = productsData?.total ?? 0;
 
   return (
     <div style={{ padding: 28, fontFamily: 'Inter, system-ui, sans-serif', maxWidth: 1100 }}>
@@ -83,10 +137,10 @@ export default function VendorDashboard() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-        <StatCard icon={ShoppingBag}  label="Orders Today"    value={analytics?.todayOrders ?? 0}                     color="#3b82f6" />
-        <StatCard icon={TrendingUp}   label="Revenue Today"   value={analytics ? `₹${analytics.todayRevenue}` : '₹0'} color="#16a34a" />
-        <StatCard icon={Package}      label="Active Products" value={activeProducts}                                    color="#8b5cf6" />
-        <StatCard icon={Users}        label="Total Customers" value={analytics?.totalCustomers ?? 0}                   color="#f97316" />
+        <StatCard icon={ShoppingBag}  label="Orders Today"    value={analytics?.todayOrders ?? 0}                     color="#3b82f6" onClick={() => navigate('/vendor/orders')} />
+        <StatCard icon={TrendingUp}   label="Revenue Today"   value={analytics ? `₹${analytics.todayRevenue}` : '₹0'} color="#16a34a" onClick={() => navigate('/vendor/orders')} />
+        <StatCard icon={Package}      label="Active Products" value={activeProducts}                                    color="#8b5cf6" onClick={() => navigate('/vendor/products')} />
+        <StatCard icon={Users}        label="Total Customers" value={analytics?.totalCustomers ?? 0}                   color="#f97316" onClick={() => navigate('/vendor/customers')} />
       </div>
 
       {/* Quick actions */}
@@ -101,6 +155,40 @@ export default function VendorDashboard() {
             <span style={{ fontSize: 16 }}>{icon}</span> {label}
           </a>
         ))}
+      </div>
+
+      {/* Trends */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Trends</h2>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {RANGE_OPTIONS.map(opt => (
+            <button
+              key={opt.days}
+              onClick={() => setRangeDays(opt.days)}
+              style={{
+                padding: '6px 12px', borderRadius: 20, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                background: rangeDays === opt.days ? '#0f172a' : '#f1f5f9',
+                color: rangeDays === opt.days ? '#fff' : '#374151',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24, alignItems: 'stretch' }}>
+        <ChartCard title="Revenue" subtitle={`₹${rangeRevenue.toLocaleString('en-IN')} over last ${rangeDays} days`}>
+          <TrendChart data={timeseries.map((d: any) => ({ date: d.date, value: d.revenue }))} color="#16a34a" formatValue={(v) => `₹${v.toLocaleString('en-IN')}`} />
+        </ChartCard>
+        <ChartCard title="Orders" subtitle={`${rangeOrders} orders over last ${rangeDays} days`}>
+          <TrendChart data={timeseries.map((d: any) => ({ date: d.date, value: d.orders }))} color="#3b82f6" formatValue={(v) => `${v} order${v === 1 ? '' : 's'}`} />
+        </ChartCard>
+        <ChartCard title="Orders by Status" subtitle="All-time">
+          {statusItems.length === 0
+            ? <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>No orders yet.</p>
+            : <BarList items={statusItems} />}
+        </ChartCard>
       </div>
 
       {/* Recent orders table */}
@@ -128,9 +216,9 @@ export default function VendorDashboard() {
             </thead>
             <tbody>
               {analytics.recentOrders.map((o: any) => (
-                <tr key={o.id} style={{ borderBottom: '1px solid #f9fafb' }}>
+                <tr key={o.id} onClick={() => navigate(`/vendor/orders?orderId=${o.id}`)} style={{ borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 600, color: '#111827' }}>#{o.orderNumber}</td>
-                  <td style={{ padding: '12px 16px', color: '#374151' }}>{o.customerPhone || '—'}</td>
+                  <td style={{ padding: '12px 16px', color: '#374151' }}>{o.customerName || o.customerPhone || '—'}</td>
                   <td style={{ padding: '12px 16px', fontWeight: 700, color: '#16a34a' }}>₹{o.total}</td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: o.paymentStatus === 'PAID' ? '#dcfce7' : '#f3f4f6', color: o.paymentStatus === 'PAID' ? '#16a34a' : '#6b7280', fontWeight: 500 }}>
@@ -139,10 +227,10 @@ export default function VendorDashboard() {
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: (STATUS_COLOR[o.status] || '#6b7280') + '18', color: STATUS_COLOR[o.status] || '#6b7280', fontWeight: 500 }}>
-                      {o.status}
+                      {STATUS_LABEL[o.status] || o.status}
                     </span>
                   </td>
-                  <td style={{ padding: '12px 16px', color: '#9ca3af' }}>{o.createdAt ? format(new Date(o.createdAt), 'HH:mm') : ''}</td>
+                  <td style={{ padding: '12px 16px', color: '#9ca3af' }}>{safeFormat(o.createdAt, 'HH:mm')}</td>
                 </tr>
               ))}
             </tbody>

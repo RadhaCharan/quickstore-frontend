@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { useVendorStore } from '../../store/vendorStore';
@@ -89,15 +89,18 @@ export default function VendorFeatures() {
   const [enabled, setEnabled] = useState<string[]>(storeFeatures);
   const [saving, setSaving] = useState<string | null>(null); // which feature is being toggled
 
-  // Load current features from backend on mount
-  useQuery({
+  // Load current features from backend on mount. React Query v5 dropped the `onSuccess`
+  // query option (it's silently ignored, never fires) — react to `data` via an effect instead.
+  const { data: featuresData } = useQuery({
     queryKey: ['vendor-features'],
     queryFn: () => api.get('/tenant/features').then(r => r.data),
-    onSuccess: (data: any[]) => {
-      const keys = data.filter(f => f.enabled !== false).map(f => f.feature || f);
-      setEnabled(keys);
-    },
   });
+
+  useEffect(() => {
+    if (!featuresData) return;
+    const keys = featuresData.filter((f: any) => f.enabled !== false).map((f: any) => f.feature || f);
+    setEnabled(keys);
+  }, [featuresData]);
 
   const toggleFeature = useMutation({
     mutationFn: async (key: string) => {

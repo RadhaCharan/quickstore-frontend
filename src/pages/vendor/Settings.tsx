@@ -1,9 +1,44 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../services/api';
+import { api, uploadImage } from '../../services/api';
 import { useVendorStore } from '../../store/vendorStore';
-import { Package, ShoppingBag, Truck, Tag, Users, Search, BarChart2 } from 'lucide-react';
+import { Package, ShoppingBag, Truck, Tag, Users, Search, BarChart2, UploadCloud } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// Reads an image file's pixel dimensions without uploading it, so we can warn about
+// an undersized or oddly-shaped logo/banner before it ever reaches the server.
+function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
+    img.src = url;
+  });
+}
+
+const BRAND_IMAGE_SPECS = {
+  logo: { minSize: 200, squareTolerance: 0.15, label: 'Logo', recommend: 'a square image, at least 200×200px (512×512px recommended)' },
+  banner: { minWidth: 800, minHeight: 300, aspect: 3, aspectTolerance: 0.5, label: 'Banner', recommend: 'a wide image at least 1200×400px (roughly a 3:1 ratio)' },
+} as const;
+
+async function validateBrandImage(file: File, kind: keyof typeof BRAND_IMAGE_SPECS): Promise<string | null> {
+  if (file.size > 2 * 1024 * 1024) return `${BRAND_IMAGE_SPECS[kind].label} is over 2MB — please use a smaller file.`;
+  try {
+    const { width, height } = await readImageDimensions(file);
+    if (kind === 'logo') {
+      const spec = BRAND_IMAGE_SPECS.logo;
+      if (width < spec.minSize || height < spec.minSize) return `Logo is ${width}×${height}px — please use ${spec.recommend}.`;
+      if (Math.abs(width - height) / Math.max(width, height) > spec.squareTolerance) return `Logo is ${width}×${height}px (not square) — please use ${spec.recommend}.`;
+    } else {
+      const spec = BRAND_IMAGE_SPECS.banner;
+      if (width < spec.minWidth || height < spec.minHeight) return `Banner is ${width}×${height}px — please use ${spec.recommend}.`;
+    }
+  } catch {
+    // If we can't read dimensions (e.g. unusual format) just let the upload proceed.
+  }
+  return null;
+}
 
 const THEMES = [
   { key: 'QUICKCART', label: 'QuickCart', desc: 'Dark — Blinkit / Zepto', best: 'Grocery, Kirana', color: '#16a34a', bg: '#111827' },
@@ -40,17 +75,42 @@ function Section({ title, subtitle, children }: any) {
 export default function VendorSettings() {
   const qc = useQueryClient();
   const { features: storeFeatures, setVendorConfig } = useVendorStore();
-  const [form, setForm] = useState({ theme: 'QUICKCART', storeName: '', tagline: '', primaryColor: '#16a34a', contactPhone: '', deliveryFee: '', minOrderAmount: '', freeDeliveryAbove: '' });
+  const [form, setForm] = useState({ theme: 'QUICKCART', storeName: '', tagline: '', primaryColor: '#16a34a', contactPhone: '', deliveryFee: '', minOrderAmount: '', freeDeliveryAbove: '', logoUrl: '', bannerUrl: '' });
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>(storeFeatures);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  useQuery({
+  async function handleBrandImage(kind: 'logo' | 'banner', file: File | undefined) {
+    if (!file) return;
+    const warning = await validateBrandImage(file, kind);
+    if (warning) { toast.error(warning); return; }
+    const setUploading = kind === 'logo' ? setUploadingLogo : setUploadingBanner;
+    const key = kind === 'logo' ? 'logoUrl' : 'bannerUrl';
+    setUploading(true);
+    try {
+      const url = await uploadImage(file);
+      setForm(f => ({ ...f, [key]: url }));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // React Query v5 dropped the `onSuccess` query option entirely (it's silently ignored,
+  // never fires) — load the fetched config into the form via an effect instead.
+  const { data: storefrontConfig } = useQuery({
     queryKey: ['storefront-config'],
     queryFn: () => api.get('/storefront/config').then(r => r.data),
-    onSuccess: (d: any) => {
-      if (d?.config) setForm(f => ({ ...f, ...d.config }));
-      if (d?.features) setEnabledFeatures(d.features);
-    },
   });
+
+  useEffect(() => {
+    if (!storefrontConfig) return;
+    if (storefrontConfig.config) setForm(f => ({ ...f, ...storefrontConfig.config }));
+    if (storefrontConfig.features) setEnabledFeatures(storefrontConfig.features);
+  }, [storefrontConfig]);
 
   const saveAll = useMutation({
     mutationFn: () => api.patch('/storefront/config', { ...form, enabledFeatures }),
@@ -107,6 +167,44 @@ export default function VendorSettings() {
         <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 12, marginBottom: 0 }}>
           ⚡ Changes take effect immediately on your store when you save below.
         </p>
+      </Section>
+
+      {/* ── BRANDING ── */}
+      <Section title="Branding" subtitle="Your logo and banner, shown at the top of your storefront.">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Store Logo</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 56, height: 56, borderRadius: 12, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, border: '1px solid #e5e7eb' }}>
+                {form.logoUrl ? <img src={form.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🏪'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <button type="button" onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '7px 12px', color: '#1d4ed8', fontSize: 12, fontWeight: 600, cursor: uploadingLogo ? 'default' : 'pointer', opacity: uploadingLogo ? 0.6 : 1 }}>
+                  <UploadCloud size={13} /> {uploadingLogo ? 'Uploading…' : form.logoUrl ? 'Replace logo' : 'Upload logo'}
+                </button>
+                {form.logoUrl && <button type="button" onClick={() => setForm(f => ({ ...f, logoUrl: '' }))} style={{ marginLeft: 8, fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>}
+                <input ref={logoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; handleBrandImage('logo', f); }} />
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>Square, at least 200×200px.</p>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Storefront Banner</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 84, height: 40, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, border: '1px solid #e5e7eb' }}>
+                {form.bannerUrl ? <img src={form.bannerUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🖼️'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <button type="button" onClick={() => bannerInputRef.current?.click()} disabled={uploadingBanner} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '7px 12px', color: '#1d4ed8', fontSize: 12, fontWeight: 600, cursor: uploadingBanner ? 'default' : 'pointer', opacity: uploadingBanner ? 0.6 : 1 }}>
+                  <UploadCloud size={13} /> {uploadingBanner ? 'Uploading…' : form.bannerUrl ? 'Replace banner' : 'Upload banner'}
+                </button>
+                {form.bannerUrl && <button type="button" onClick={() => setForm(f => ({ ...f, bannerUrl: '' }))} style={{ marginLeft: 8, fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>}
+                <input ref={bannerInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; handleBrandImage('banner', f); }} />
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>Wide, at least 1200×400px.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </Section>
 
       {/* ── THEME ── */}

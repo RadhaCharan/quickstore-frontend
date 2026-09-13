@@ -10,14 +10,15 @@ export function ProductCard({ product, base }: { product: ProductSummary; base: 
   const atLimit = product.stockQty !== null && qty >= product.stockQty;
 
   return (
-    <article className="card">
-      {off !== null && <span className="badge-off">{off}% off</span>}
+    <article className="card" data-soldout={!product.inStock || undefined}>
+      {off !== null && product.inStock && <span className="badge-off">{off}% off</span>}
 
       <Link to={`${base}/product/${product.id}`} state={{ background: location }} className="card__link">
         <div className="card__media">
           {product.images[0]
             ? <img src={product.images[0]} alt="" loading="lazy" />
             : <span aria-hidden="true">🛍️</span>}
+          {!product.inStock && <span className="card__soldout-tag">Sold out</span>}
         </div>
         <h3 className="card__name">{product.name}</h3>
         {product.unit && <p className="card__unit">{product.unit}</p>}
