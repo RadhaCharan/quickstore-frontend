@@ -9,6 +9,7 @@ interface AuthState {
   tenantId: string;
   tenantSlug: string;
   onboarded: boolean;
+  onboardedTenants: Record<string, boolean>; // per-tenant onboarding status
   setAuth: (token: string, refreshToken: string, role: string, email: string, tenantId: string) => void;
   setTenantSlug: (slug: string) => void;
   setOnboarded: (v: boolean) => void;
@@ -26,21 +27,32 @@ export const useAuthStore = create<AuthState>()(
       tenantId: '',
       tenantSlug: '',
       onboarded: false,
+      onboardedTenants: {},
+
       setAuth: (token, refreshToken, role, email, tenantId) =>
         set(state => ({
           token, refreshToken, role, email, tenantId,
-          tenantSlug: '',   // always clear stale slug — fresh fetch sets the correct one
-          // Only reset onboarded when a DIFFERENT tenant logs in (new signup / switch account)
-          // Same tenant logging in again keeps onboarded:true so they land on dashboard
-          onboarded: state.tenantId === tenantId ? state.onboarded : false,
+          tenantSlug: '',  // always clear stale slug — fresh fetch sets the correct one
+          // Returning vendor: look up their per-tenant onboarding status
+          // New vendor (tenantId not seen before): defaults to false → goes to onboarding
+          onboarded: state.onboardedTenants[tenantId] ?? false,
         })),
+
       setTenantSlug: (tenantSlug) => set({ tenantSlug }),
-      setOnboarded: (onboarded) => set({ onboarded }),
+
+      setOnboarded: (onboarded) =>
+        set(state => ({
+          onboarded,
+          // Remember this tenant has completed onboarding — survives logout/re-login
+          onboardedTenants: { ...state.onboardedTenants, [state.tenantId]: onboarded },
+        })),
+
       setCustomerAuth: (token, phone, tenantId) =>
         set({ token, refreshToken: null, role: 'CUSTOMER', email: phone, tenantId }),
+
       logout: () =>
         set({ token: null, refreshToken: null, role: '', email: '', tenantId: '', tenantSlug: '' }),
-        // Note: onboarded intentionally NOT reset — survives logout so returning vendors skip the wizard
+        // onboardedTenants intentionally kept — returning vendors skip the wizard
     }),
     { name: 'qs-auth' },
   ),

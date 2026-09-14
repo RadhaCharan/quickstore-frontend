@@ -13,7 +13,7 @@ export default function VendorLogin() {
   const [otp, setOtp]           = useState('');
   const [otpSent, setOtpSent]   = useState(false);
   const [loading, setLoading]   = useState(false);
-  const { setAuth, setTenantSlug, onboarded: _o } = useAuthStore(); void _o;
+  const { setAuth, setTenantSlug } = useAuthStore();
   const { setVendorConfig } = useVendorStore();
   const navigate = useNavigate();
 
@@ -33,6 +33,9 @@ export default function VendorLogin() {
         .map((f: any) => f.feature || f);
       setVendorConfig({ features, storeName: meRes.data?.name || '', slug, plan: meRes.data?.plan || '' });
     } catch {}
+    // Navigate based on per-tenant onboarding status stored in onboardedTenants:
+    //  - true  → vendor completed onboarding (clicked "Go to Dashboard") → Dashboard
+    //  - false/undefined → vendor left midway or first time → Onboarding
     navigate(useAuthStore.getState().onboarded ? '/vendor/dashboard' : '/vendor/onboarding');
   };
 
