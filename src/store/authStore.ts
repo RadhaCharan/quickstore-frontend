@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthState>()(
       tenantSlug: '',
       onboarded: false,
       setAuth: (token, refreshToken, role, email, tenantId) =>
-        set({ token, refreshToken, role, email, tenantId, onboarded: false }),
+        set({ token, refreshToken, role, email, tenantId, onboarded: false, tenantSlug: '' }),
       setTenantSlug: (tenantSlug) => set({ tenantSlug }),
       setOnboarded: (onboarded) => set({ onboarded }),
       setCustomerAuth: (token, phone, tenantId) =>

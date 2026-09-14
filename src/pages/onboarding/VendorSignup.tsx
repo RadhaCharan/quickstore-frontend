@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useAuthStore } from '../../store/authStore';
+import { useVendorStore } from '../../store/vendorStore';
 import toast from 'react-hot-toast';
 import { Zap } from 'lucide-react';
 
 export default function VendorSignup() {
   const navigate = useNavigate();
+  const { setAuth, setTenantSlug } = useAuthStore();
+  const { setVendorConfig } = useVendorStore();
   const [step, setStep]       = useState<'form' | 'otp'>('form');
   const [loading, setLoading] = useState(false);
   const [form, setForm]       = useState({ storeName: '', phone: '', email: '', password: '' });
@@ -61,15 +65,32 @@ export default function VendorSignup() {
     }
   };
 
-  // Step 2: Verify OTP to activate account
+  // Step 2: Verify OTP → activate account → auto-login → onboarding
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 6) return;
     setLoading(true);
     try {
-      await api.post('/auth/vendor/signup/verify-otp', { phone: signupPhone, otp });
-      toast.success('Phone verified! Your store is now active.', { duration: 4000 });
-      navigate('/vendor/login');
+      const { data } = await api.post('/auth/vendor/signup/verify-otp', { phone: signupPhone, otp });
+      toast.success('Phone verified! Setting up your store…', { duration: 3000 });
+
+      if (data.accessToken) {
+        // Auto-login with the JWT returned from activation
+        setAuth(data.accessToken, data.refreshToken, data.user.role, data.user.email, data.user.tenantId);
+        const authHeader = { headers: { Authorization: `Bearer ${data.accessToken}` } };
+        try {
+          const [meRes, featRes] = await Promise.all([
+            api.get('/tenant/me', authHeader),
+            api.get('/tenant/features', authHeader),
+          ]);
+          const slug = meRes.data?.slug || '';
+          if (slug) setTenantSlug(slug);
+          setVendorConfig({ features: [], storeName: meRes.data?.name || '', slug, plan: meRes.data?.plan || '' });
+        } catch {}
+        navigate('/vendor/onboarding');   // ← go straight to onboarding
+      } else {
+        navigate('/vendor/login');
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Invalid OTP. Please try again.');
     } finally {
