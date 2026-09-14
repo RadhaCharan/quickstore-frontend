@@ -6,9 +6,12 @@ import { Zap } from 'lucide-react';
 
 export default function VendorSignup() {
   const navigate = useNavigate();
+  const [step, setStep]       = useState<'form' | 'otp'>('form');
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ storeName: '', phone: '', email: '', password: '' });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [form, setForm]       = useState({ storeName: '', phone: '', email: '', password: '' });
+  const [otp, setOtp]         = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [errors, setErrors]   = useState<Record<string, string>>({});
 
   const previewSlug = form.storeName.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 30);
 
@@ -27,14 +30,14 @@ export default function VendorSignup() {
     return err;
   };
 
+  // Step 1: Submit signup form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const err = validate();
     if (Object.keys(err).length) { setErrors(err); return; }
-
     setLoading(true);
     try {
-      await api.post('/tenant/signup', {
+      const { data } = await api.post('/tenant/signup', {
         name: form.storeName.trim(),
         ownerName: form.storeName.trim(),
         email: form.email.trim(),
@@ -43,15 +46,85 @@ export default function VendorSignup() {
         category: 'General',
         requestedFeatures: ['PRODUCTS', 'ORDERS', 'SEARCH', 'CATEGORIES'],
       });
-      toast.success('Account created! Sign in to set up your store.', { duration: 4000 });
-      navigate('/vendor/login');
+      if (data.requiresOtp) {
+        setSignupPhone(data.phone || form.phone.trim());
+        setStep('otp');
+        toast.success('OTP sent to your phone!');
+      } else {
+        toast.success('Account created! Sign in to continue.');
+        navigate('/vendor/login');
+      }
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Registration failed. Please try again.';
-      toast.error(msg);
+      toast.error(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Step 2: Verify OTP to activate account
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length !== 6) return;
+    setLoading(true);
+    try {
+      await api.post('/auth/vendor/signup/verify-otp', { phone: signupPhone, otp });
+      toast.success('Phone verified! Your store is now active.', { duration: 4000 });
+      navigate('/vendor/login');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendSignupOtp = async () => {
+    try {
+      await api.post('/auth/vendor/signup/send-otp', { phone: signupPhone });
+      toast.success('OTP resent!');
+    } catch {
+      toast.error('Failed to resend OTP');
+    }
+  };
+
+  // ── OTP verification step ─────────────────────────────────────────────────
+  if (step === 'otp') return (
+    <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, system-ui, sans-serif', padding: '24px 16px' }}>
+      <div style={{ width: '100%', maxWidth: 400, textAlign: 'center' }}>
+        <div style={{ width: 56, height: 56, background: '#16a34a', borderRadius: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+          <span style={{ fontSize: 26 }}>📱</span>
+        </div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: '0 0 8px' }}>Verify your phone</h1>
+        <p style={{ fontSize: 14, color: '#6b7280', margin: '0 0 28px' }}>
+          We sent a 6-digit code to <strong>{signupPhone}</strong>
+        </p>
+        <div style={{ background: '#fff', borderRadius: 18, border: '1px solid #e5e7eb', padding: '28px 26px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <form onSubmit={handleVerifyOtp}>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={otp}
+              onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+              placeholder="Enter 6-digit OTP"
+              style={{ width: '100%', border: '1.5px solid #d1d5db', borderRadius: 10, padding: '14px', fontSize: 22, textAlign: 'center', letterSpacing: 10, color: '#111827', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }}
+              onFocus={e => e.target.style.borderColor = '#16a34a'}
+              onBlur={e => e.target.style.borderColor = '#d1d5db'}
+            />
+            <button
+              type="submit"
+              disabled={loading || otp.length !== 6}
+              style={{ width: '100%', marginTop: 16, background: (loading || otp.length !== 6) ? '#86efac' : '#16a34a', color: '#fff', border: 'none', borderRadius: 11, padding: '13px', fontSize: 15, fontWeight: 700, cursor: (loading || otp.length !== 6) ? 'not-allowed' : 'pointer' }}
+            >
+              {loading ? 'Verifying…' : 'Activate My Store →'}
+            </button>
+          </form>
+          <button onClick={resendSignupOtp} style={{ marginTop: 14, background: 'none', border: 'none', color: '#16a34a', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Didn't receive it? Resend OTP
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, system-ui, sans-serif', padding: '24px 16px' }}>
