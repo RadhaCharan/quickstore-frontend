@@ -27,7 +27,13 @@ export const useAuthStore = create<AuthState>()(
       tenantSlug: '',
       onboarded: false,
       setAuth: (token, refreshToken, role, email, tenantId) =>
-        set({ token, refreshToken, role, email, tenantId, onboarded: false, tenantSlug: '' }),
+        set(state => ({
+          token, refreshToken, role, email, tenantId,
+          tenantSlug: '',   // always clear stale slug — fresh fetch sets the correct one
+          // Only reset onboarded when a DIFFERENT tenant logs in (new signup / switch account)
+          // Same tenant logging in again keeps onboarded:true so they land on dashboard
+          onboarded: state.tenantId === tenantId ? state.onboarded : false,
+        })),
       setTenantSlug: (tenantSlug) => set({ tenantSlug }),
       setOnboarded: (onboarded) => set({ onboarded }),
       setCustomerAuth: (token, phone, tenantId) =>
