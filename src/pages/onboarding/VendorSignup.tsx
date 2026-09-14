@@ -7,8 +7,10 @@ import { Zap } from 'lucide-react';
 export default function VendorSignup() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ phone: '', email: '', password: '' });
+  const [form, setForm] = useState({ storeName: '', phone: '', email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const previewSlug = form.storeName.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 30);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -17,9 +19,10 @@ export default function VendorSignup() {
 
   const validate = () => {
     const err: Record<string, string> = {};
-    if (!form.phone.trim())   err.phone    = 'Phone number is required';
-    if (!form.email.trim())   err.email    = 'Email is required';
-    if (!form.password)       err.password = 'Password is required';
+    if (!form.storeName.trim()) err.storeName = 'Store name is required';
+    if (!form.phone.trim())     err.phone     = 'Phone number is required';
+    if (!form.email.trim())     err.email     = 'Email is required';
+    if (!form.password)         err.password  = 'Password is required';
     if (form.password && form.password.length < 8) err.password = 'Minimum 8 characters';
     return err;
   };
@@ -31,11 +34,9 @@ export default function VendorSignup() {
 
     setLoading(true);
     try {
-      // Use email prefix as default store name — vendor customises it in onboarding
-      const defaultStoreName = form.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, ' ').trim() || 'My Store';
       await api.post('/tenant/signup', {
-        name: defaultStoreName,
-        ownerName: defaultStoreName,
+        name: form.storeName.trim(),
+        ownerName: form.storeName.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
         password: form.password,
@@ -68,6 +69,22 @@ export default function VendorSignup() {
         {/* Card */}
         <div style={{ background: '#fff', borderRadius: 18, border: '1px solid #e5e7eb', padding: '28px 26px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
           <form onSubmit={handleSubmit}>
+
+            {/* Store Name */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Store Name *</label>
+              <input
+                type="text"
+                value={form.storeName}
+                onChange={set('storeName')}
+                placeholder="e.g. Ganesh Kirana Store"
+                style={{ width: '100%', border: `1.5px solid ${errors.storeName ? '#ef4444' : '#d1d5db'}`, borderRadius: 10, padding: '11px 14px', fontSize: 14, color: '#111827', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                onFocus={e => e.target.style.borderColor = '#16a34a'}
+                onBlur={e => e.target.style.borderColor = errors.storeName ? '#ef4444' : '#d1d5db'}
+              />
+              {previewSlug && <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>Your store URL: /store/{previewSlug}</p>}
+              {errors.storeName && <p style={{ fontSize: 11, color: '#ef4444', margin: '4px 0 0' }}>{errors.storeName}</p>}
+            </div>
 
             {/* Phone */}
             <div style={{ marginBottom: 16 }}>

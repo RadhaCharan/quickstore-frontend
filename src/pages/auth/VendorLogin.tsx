@@ -35,7 +35,8 @@ export default function VendorLogin() {
         setVendorConfig({ features, storeName: meRes.data?.name || '', slug, plan: meRes.data?.plan || '' });
       } catch {}
 
-      navigate(onboarded ? '/vendor/dashboard' : '/vendor/onboarding');
+      // Read fresh state — setAuth resets onboarded:false, so we check the store directly
+      navigate(useAuthStore.getState().onboarded ? '/vendor/dashboard' : '/vendor/onboarding');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Invalid credentials');
     } finally {
