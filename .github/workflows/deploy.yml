@@ -2,7 +2,9 @@ name: Deploy Frontend → GCP Cloud Run
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'                  # Triggers ONLY when a version tag is pushed
+                              # e.g.  git tag v1.0.0 && git push origin v1.0.0
 
 permissions:
   contents: read
@@ -17,7 +19,7 @@ env:
 
 jobs:
   deploy:
-    name: Build & Deploy
+    name: Build & Deploy (${{ github.ref_name }})
     runs-on: ubuntu-latest
 
     steps:
@@ -38,25 +40,24 @@ jobs:
       - name: Configure Docker auth
         run: gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
-      # Build image directly on GitHub runner — bakes VITE_API_URL into the JS bundle
       - name: Build Docker image
         run: |
           docker build \
             --build-arg VITE_API_URL="${{ env.BACKEND_URL }}/v1" \
             --build-arg VITE_RAZORPAY_KEY_ID="rzp_test_placeholder" \
-            -t "${{ env.IMAGE }}:${{ github.sha }}" \
+            -t "${{ env.IMAGE }}:${{ github.ref_name }}" \
             -t "${{ env.IMAGE }}:latest" \
             .
 
       - name: Push image to Artifact Registry
         run: |
-          docker push "${{ env.IMAGE }}:${{ github.sha }}"
+          docker push "${{ env.IMAGE }}:${{ github.ref_name }}"
           docker push "${{ env.IMAGE }}:latest"
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
-            --image "${{ env.IMAGE }}:${{ github.sha }}" \
+            --image "${{ env.IMAGE }}:${{ github.ref_name }}" \
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
@@ -72,4 +73,4 @@ jobs:
           URL=$(gcloud run services describe ${{ env.SERVICE }} \
             --region ${{ env.REGION }} \
             --format="value(status.url)")
-          echo "✅ Frontend live at: $URL"
+          echo "✅ Frontend ${{ github.ref_name }} live at: $URL"
